@@ -11,35 +11,36 @@ from openai import OpenAI
 
 client = OpenAI(
   organization='',
-  api_key='',
+  api_key=''
 )
 
 NEWS_API_KEY= ""
 EMAIL_API_KEY= ""
 email= ""
 
-def getNews():
-    print("Making API call")
-    url= f"https://newsapi.org/v2/everything?domains=techcrunch.com,thenextweb.com&apiKey={NEWS_API_KEY}"
-    response= requests.get(url)
-    print(response.json())
+def getNews(country='us'):
+    topArticles= []
+    url= f"https://newsapi.org/v2/top-headlines?country={country}&pageSize=5&apiKey={NEWS_API_KEY}"
+    response= requests.get(url).json()
+    topArticles= response['articles']
+    return topArticles
     
-def sendEmail():
+def sendEmail(content):
     today = datetime.date.today()
     try:
         sg = sendgrid.SendGridAPIClient(api_key=EMAIL_API_KEY)
         fromEmail = Email(email)
         toEmail = To(email)
-        subject = "Personal Press Summary: " + today.strftime("%m/%d/%Y")
-        content = Content("text/html", "<div><h1>Personal Press</h1></div>")
-        mail = Mail(fromEmail, toEmail, subject, content)
+        subject = "Personal Press Digest: " + today.strftime("%m/%d/%Y")
+        emailBody= Content("text/html", "<h1>Personal Press Digest</h1>" + content)
+        mail = Mail(fromEmail, toEmail, subject, emailBody)
         response = sg.client.mail.send.post(request_body=mail.get())
         print(response.status_code)
         print(subject)
     except SendGridException as e:
         print(e.message)
         
-def summarize_article(content):
+def summarizeArticle(content):
     prompt = (
         f"Summarize this article: {content}"
     )
@@ -54,7 +55,7 @@ def summarize_article(content):
     summary = response.choices[0].message.content
     return summary
     
-def categorize_article(title, description):
+def categorizeArticle(title, description):
     prompt = (
         f"Here is an article:\n\nTitle: {title}\nContent: {description}\n\n"
         "Assign it to one of these categories: Technology, Health, Business, Sports, Entertainment, or Politics."
@@ -69,6 +70,21 @@ def categorize_article(title, description):
     category = response.choices[0].message.content
     return category
 
-# getNews()
-# sendEmail()
-# summarize_article()
+def createNewsDigest():
+    articles= getNews()
+    formattedArticles= []
+    content=''
+    for article in articles:
+        # summary= summarizeArticle(article)
+        summary= article['description']
+        formattedArticles.append(newsArticle(article['title'], summary, article['author'], article['source'], article['url']))
+        content +=   f"""<div>
+                      <h4>{article['title']}</h4>
+                      <h6>{article['source']['name']}</h6>
+                      <h6>{article['author']}</h6>
+                      <h6>{summary}</h6>
+                      <a href={article['url']}>Read full article > </a>
+                      </div>"""
+    sendEmail(content)
+
+createNewsDigest()
