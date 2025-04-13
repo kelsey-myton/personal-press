@@ -2,56 +2,115 @@ import sendgrid
 import os
 from sendgrid.helpers.mail import *
 import requests
-# from dotenv import load_dotenv
 import datetime
 from openai import OpenAI
-
-# Load API key from .env file
-# load_dotenv()
+import json
 
 client = OpenAI(
   organization='',
   api_key=''
 )
 
-NEWS_API_KEY= ""
-EMAIL_API_KEY= ""
-email= ""
+NEWS_API_KEY= ''
+EMAIL_API_KEY= ''
+
+# Load the data from the file
+with open("userPreferences.json", "r") as f:
+    data = json.load(f)
+        
+today = datetime.date.today()
+
+header="""
+            <!DOCTYPE html>
+            <html>
+                <head>
+            <style>
+                h1{
+                font-family: "Diplomata SC", serif;
+                font-weight: 400;
+                font-size: 30px;
+                font-style: normal;
+                text-align: center;
+                }
+            .header{
+                display: flex;
+                justify-content: space-between;
+            }
+            a{
+                color: #4A0404;
+                border: 1.5px solid #4A0404;;
+                padding: 10px 20px;
+                text-align: center;
+                text-decoration: none;
+                display: inline-block;
+            }
+            .footer{
+                display: flex;
+                flex-direction: row;
+                gap: 10px;
+                text-align: center;
+            }
+            .footer-lines{
+                width:28%;
+                margin:auto;
+            }
+            hr{
+                margin:2px;
+                color: #4A0404;
+            }
+            </style>
+                </head>
+            <body>
+                <div class='header'>
+                <h6>""" + today.strftime("%B %d, %Y") + """</h6>
+                </div>
+                <hr>
+                <hr>
+            <h1>Personal Press Digest</h1>
+            """
+footer= """       
+            <div class='footer'>
+                <div class='footer-lines'>
+                <hr>
+                <hr>
+                </div>
+                <h6>Your News, Your Way- Delivered Daily.</h6> 
+                <div class='footer-lines'>
+                <hr>
+                <hr>
+                </div>
+                </div>
+                </body></html>"""
 
 def getNews(country='us'):
-    topArticles= []
-    url= f"https://newsapi.org/v2/top-headlines?country={country}&pageSize=5&apiKey={NEWS_API_KEY}"
+    url= f"https://newsapi.org/v2/top-headlines?country={country}&pageSize={data['numArticles']}&apiKey={NEWS_API_KEY}"
     response= requests.get(url).json()
-    topArticles= response['articles']
-    return topArticles
+    return response['articles']
     
 def sendEmail(content):
-    today = datetime.date.today()
     try:
         sg = sendgrid.SendGridAPIClient(api_key=EMAIL_API_KEY)
-        fromEmail = Email(email)
-        toEmail = To(email)
+        fromEmail = Email(data['email'])
+        toEmail = To(data['email'])
         subject = "Personal Press Digest: " + today.strftime("%m/%d/%Y")
-        emailBody= Content("text/html", "<h1>Personal Press Digest</h1>" + content)
+        emailBody= Content("text/html", header + content + footer)
         mail = Mail(fromEmail, toEmail, subject, emailBody)
         response = sg.client.mail.send.post(request_body=mail.get())
-        print(response.status_code)
-        print(subject)
     except SendGridException as e:
         print(e.message)
         
-def summarizeArticle(content):
+def summarizeArticle(url):
+        
     prompt = (
-        f"Summarize this article: {content}"
+        f"Summarize the article at this link: {url}. Use a {data['tone']} and {data['length']}."
     )
     response = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[
-        {"role": "system", "content": "You are a helpful assistant that summarizes articles."},
+        {"role": "system", "content": "You are an editor, summarizing a news article for a digest."},
         {"role": "user", "content": prompt}
         ]
     )
-    print(response.choices[0].message)
     summary = response.choices[0].message.content
     return summary
     
@@ -75,15 +134,14 @@ def createNewsDigest():
     formattedArticles= []
     content=''
     for article in articles:
-        # summary= summarizeArticle(article)
-        summary= article['description']
-        formattedArticles.append(newsArticle(article['title'], summary, article['author'], article['source'], article['url']))
+        summary= summarizeArticle(article['url'])
         content +=   f"""<div>
+                    <hr style='margin:20px;'>
                       <h4>{article['title']}</h4>
                       <h6>{article['source']['name']}</h6>
-                      <h6>{article['author']}</h6>
+                      <h6>By {article['author']}</h6>
                       <h6>{summary}</h6>
-                      <a href={article['url']}>Read full article > </a>
+                      <a href={article['url']}>Read full article</a>
                       </div>"""
     sendEmail(content)
 
